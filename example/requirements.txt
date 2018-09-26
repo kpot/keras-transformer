@@ -1,0 +1,4 @@
+Keras>=2.0.8
+numpy>=1.15.2
+subword-nmt>=0.3.5
+tqdm>=4.26.0
