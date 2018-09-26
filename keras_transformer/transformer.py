@@ -115,7 +115,7 @@ class TransformerTransition(Layer):
 class TransformerBlock:
     """
     A pseudo-layer combining together all nuts and bolts to assemble
-    a complete section of bothe the Transformer and the Universal Transformer
+    a complete section of both the Transformer and the Universal Transformer
     models, following description from the "Universal Transformers" paper.
     Each such block is, essentially:
 

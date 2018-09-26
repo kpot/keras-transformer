@@ -5,10 +5,11 @@ from itertools import islice
 from typing import Iterable, Callable, List, Optional
 
 import tqdm
-from keras import Input, optimizers, losses, metrics
+from keras import Input, optimizers
 from keras.models import Model
-from keras.layers import Embedding, Layer, Softmax, Dropout, regularizers
+from keras.layers import Embedding, Layer, Dropout, regularizers
 from keras import activations
+# noinspection PyPep8Naming
 from keras import backend as K
 from keras import callbacks
 from subword_nmt.learn_bpe import learn_bpe
@@ -18,7 +19,7 @@ from keras_transformer.position import TransformerCoordinateEmbedding
 from keras_transformer.transformer import TransformerBlock, TransformerACT
 from .bpe import (
     build_vocabulary, TOKEN_FOR_NUMBERS, BPEEncoder, BPETokenizer, BPEMerges,
-    ID_FOR_PADDING, ID_FOR_BEGINNING_OF_SEQUENCE, ID_FOR_END_OF_SEQUENCE)
+    ID_FOR_PADDING)
 from .tokenizer import RegexTokenizer
 
 NUM_BPE_MERGES = 10000
@@ -173,7 +174,6 @@ def training_data_to_dense_samples(training_set_name: str,
     return result
 
 
-
 class TiedOutputEmbedding(Layer):
     """
     Allows to reuse the same word embedding matrix both for the input and
@@ -279,7 +279,8 @@ def perplexity(y_true, y_pred):
     Popular metric for evaluating language modelling architectures.
     More info: http://cs224d.stanford.edu/lecture_notes/LectureNotes4.pdf
     """
-    cross_entropy = K.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
+    cross_entropy = K.sparse_categorical_crossentropy(
+        y_true, y_pred, from_logits=True)
     return K.mean(K.exp(K.mean(cross_entropy, axis=-1)))
 
 

@@ -7,7 +7,7 @@ The main arguable disadvantage of this tokenizer is that it's unable to see
 any tokens that don't match the regular expressions describing of what
 a token should look like.
 """
-from typing import NamedTuple, Optional, Union, Tuple, Iterable
+from typing import NamedTuple, Optional, Tuple, Iterable
 from fractions import Fraction
 import re
 
