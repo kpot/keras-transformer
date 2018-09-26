@@ -5,19 +5,21 @@ Keras-transformer it's a library implementing nuts and bolts for
 building (Universal) Transformer models using Keras. It allows you
 to assemble a multi-step Transformer model in a flexible way, for example:
 
-    transformer_block = TransformerBlock(
-        name='transformer',
-        num_heads=8,
-        residual_dropout=0.1,
-        attention_dropout=0.1,
-        use_masking=True)
-    add_coordinate_embedding = TransformerCoordinateEmbedding(
-        transformer_depth,
-        name='coordinate_embedding')
+```python
+transformer_block = TransformerBlock(
+    name='transformer',
+    num_heads=8,
+    residual_dropout=0.1,
+    attention_dropout=0.1,
+    use_masking=True)
+add_coordinate_embedding = TransformerCoordinateEmbedding(
+    transformer_depth,
+    name='coordinate_embedding')
 
-    for step in range(transformer_depth):
-        output = transformer_block(
-            add_coordinate_embedding(input, step=step))
+for step in range(transformer_depth):
+    output = transformer_block(
+        add_coordinate_embedding(input, step=step))
+```
 
 The library supports positional encoding and embeddings,
 attention masking, memory-compressed attention, ACT (adaptive computation time).
