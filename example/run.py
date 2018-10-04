@@ -1,3 +1,4 @@
+import argparse
 import zipfile
 import os
 import io
@@ -5,25 +6,25 @@ from itertools import islice
 from typing import Iterable, Callable, List, Optional
 
 import tqdm
-from keras import Input, optimizers
+from keras import Input, optimizers, losses
 from keras.models import Model
-from keras.layers import Embedding, Layer, Dropout, regularizers
-from keras import activations
+from keras.layers import Embedding, Dropout, regularizers, Softmax
 # noinspection PyPep8Naming
 from keras import backend as K
 from keras import callbacks
 from subword_nmt.learn_bpe import learn_bpe
 import numpy as np
 
+from keras_transformer.extras import TiedOutputEmbedding
 from keras_transformer.position import TransformerCoordinateEmbedding
 from keras_transformer.transformer import TransformerBlock, TransformerACT
+
 from .bpe import (
     build_vocabulary, TOKEN_FOR_NUMBERS, BPEEncoder, BPETokenizer, BPEMerges,
     ID_FOR_PADDING)
 from .tokenizer import RegexTokenizer
 
 NUM_BPE_MERGES = 10000
-MAX_SEQ_LENGTH = 256
 WORD_EMBEDDING_SIZE = 512
 
 WIKITEXT_ZIP = os.path.join(
@@ -174,73 +175,12 @@ def training_data_to_dense_samples(training_set_name: str,
     return result
 
 
-class TiedOutputEmbedding(Layer):
-    """
-    Allows to reuse the same word embedding matrix both for the input and
-    the output layers of the network.
-    This is called Weight Tying and is proven to improve performance
-    of neural network language models, as well as decrease their number
-    of parameters (eliminating the need for a separate huge matrix
-    of output weights).
-
-    https://arxiv.org/abs/1608.05859
-    https://arxiv.org/abs/1611.01462
-    https://blog.openai.com/language-unsupervised/
-    """
-    def __init__(self, input_embedding: Embedding, activation=None,
-                 add_biases=False, **kwargs):
-        self.embedding = input_embedding
-        self.activation = activations.get(activation)
-        self.add_biases = add_biases
-        super().__init__(**kwargs)
-
-    # noinspection PyAttributeOutsideInit
-    def build(self, input_shape):
-        assert len(input_shape) == 3
-        self.projection = self.add_weight(
-            name='kernel',
-            shape=(input_shape[-1], self.embedding.output_dim),
-            initializer='glorot_uniform',
-            trainable=True)
-        if self.add_biases:
-            self.biases = self.add_weight(
-                name='biases',
-                shape=(self.embedding.output_dim,),
-                initializer='zeros',
-                trainable=True)
-            self.emb_biases = self.add_weight(
-                name='emb_biases',
-                shape=(self.embedding.input_dim,),
-                initializer='zeros',
-                trainable=True)
-        return super().build(input_shape)
-
-    def call(self, inputs, **kwargs):
-        input_shape_tensor = K.shape(inputs)
-        last_input_dim = K.int_shape(inputs)[-1]
-        projected = K.dot(K.reshape(inputs, (-1, last_input_dim)),
-                          self.projection)
-        if self.add_biases:
-            projected = K.bias_add(projected, self.biases,
-                                   data_format='channels_last')
-        attention = K.dot(projected, K.transpose(self.embedding.embeddings))
-        if self.add_biases:
-            attention = K.bias_add(attention, self.emb_biases,
-                                   data_format='channels_last')
-        result = K.reshape(
-            self.activation(attention),
-            (input_shape_tensor[0],
-             input_shape_tensor[1],
-             self.embedding.input_dim))
-        return result
-
-    def compute_output_shape(self, input_shape):
-        return input_shape[0], input_shape[1], self.embedding.input_dim
-
-
 def make_transformer_model(max_seq_length: int, vocabulary_size: int,
                            word_embedding_size: int, transformer_depth: int,
-                           num_heads: int, dropout_rate: float=0.1):
+                           num_heads: int, transformer_dropout: float=0.1,
+                           embedding_dropout: float=0.6,
+                           l2_reg_penalty: float=1e-6,
+                           confidence_penalty_weight: float=0.1):
     word_ids = Input(shape=(max_seq_length,), dtype='int32', name='word_ids')
     embedding_layer = Embedding(
         vocabulary_size, word_embedding_size,
@@ -249,29 +189,41 @@ def make_transformer_model(max_seq_length: int, vocabulary_size: int,
         # Regularization is based on paper "A Comparative Study on
         # Regularization Strategies for Embedding-based Neural Networks"
         # https://arxiv.org/pdf/1508.03721.pdf
-        embeddings_regularizer=regularizers.l2(1e-4))
-    output_layer = TiedOutputEmbedding(embedding_layer, name='word_prediction')
+        embeddings_regularizer=regularizers.l2(l2_reg_penalty))
+    output_layer = TiedOutputEmbedding(
+        embedding_layer,
+        projection_regularizer=regularizers.l2(l2_reg_penalty),
+        projection_dropout=embedding_dropout,
+        name='word_prediction_logits')
     coordinate_embedding_layer = TransformerCoordinateEmbedding(
         transformer_depth,
         name='coordinate_embedding')
     transformer_act_layer = TransformerACT(name='adaptive_computation_time')
     transformer_block = TransformerBlock(
-        name='transformer', num_heads=num_heads, residual_dropout=dropout_rate,
-        attention_dropout=dropout_rate, use_masking=True)
+        name='transformer', num_heads=num_heads,
+        residual_dropout=transformer_dropout,
+        attention_dropout=transformer_dropout,
+        use_masking=True)
+    output_softmax_layer = Softmax(name='word_predictions')
 
     next_step_input = act_output = embedding_layer(word_ids)
-    dropout_layer = Dropout(dropout_rate, name='input_dropout')
+    dropout_layer = Dropout(embedding_dropout, name='input_dropout')
 
+    next_step_input = dropout_layer(next_step_input)
     for i in range(transformer_depth):
         next_step_input = coordinate_embedding_layer(next_step_input, step=i)
-        next_step_input = dropout_layer(next_step_input)
         next_step_input = transformer_block(next_step_input)
         next_step_input, act_output = transformer_act_layer(next_step_input)
 
     transformer_act_layer.finalize()
     next_step_input = act_output
-    word_predictions = output_layer(next_step_input)
-    return Model(inputs=[word_ids], outputs=[word_predictions])
+    word_predictions = output_softmax_layer(output_layer(next_step_input))
+    model = Model(inputs=[word_ids], outputs=[word_predictions])
+    confidence_penalty = K.mean(
+        confidence_penalty_weight *
+        K.sum(word_predictions * K.log(word_predictions), axis=-1))
+    model.add_loss(confidence_penalty)
+    return model
 
 
 def perplexity(y_true, y_pred):
@@ -279,40 +231,37 @@ def perplexity(y_true, y_pred):
     Popular metric for evaluating language modelling architectures.
     More info: http://cs224d.stanford.edu/lecture_notes/LectureNotes4.pdf
     """
-    cross_entropy = K.sparse_categorical_crossentropy(
-        y_true, y_pred, from_logits=True)
+    cross_entropy = K.sparse_categorical_crossentropy(y_true, y_pred)
     return K.mean(K.exp(K.mean(cross_entropy, axis=-1)))
-
-
-def sparse_categorical_crossentropy_with_logits(y_true, y_pred):
-    return K.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
 def main(model_save_path: str,
          tensorboard_log_path: Optional[str],
          num_epochs: int,
          learning_rate: float,
-         batch_size: int):
+         batch_size: int,
+         max_seq_length: int,
+         word_embedding_size: int):
     encoder = build_wikitext_bpe_encoder()
 
     def x_y_for_dataset(dataset_name):
         fat_sample = training_data_to_dense_samples(
-            dataset_name, encoder, MAX_SEQ_LENGTH)
-        _x = fat_sample[:, :MAX_SEQ_LENGTH]
+            dataset_name, encoder, max_seq_length)
+        _x = fat_sample[:, :max_seq_length]
         _y = np.expand_dims(fat_sample[:, 1:], axis=-1)
         return _x, _y
 
     x, y = x_y_for_dataset(WIKITEXT_TRAINING_SET_NAME)
     model = make_transformer_model(
-        max_seq_length=MAX_SEQ_LENGTH,
+        max_seq_length=max_seq_length,
         vocabulary_size=encoder.vocabulary_size(),
-        word_embedding_size=WORD_EMBEDDING_SIZE,
+        word_embedding_size=word_embedding_size,
         transformer_depth=5,
         num_heads=8)
-    optimizer = optimizers.Adam(lr=learning_rate)
+    optimizer = optimizers.Adam(lr=learning_rate, clipvalue=5)
     model.compile(
         optimizer,
-        loss=sparse_categorical_crossentropy_with_logits,
+        loss=losses.sparse_categorical_crossentropy,
         metrics=[perplexity])
     if os.path.exists(model_save_path):
         print('Loading weights from', model_save_path)
@@ -337,8 +286,36 @@ def main(model_save_path: str,
 
 
 if __name__ == '__main__':
-    main(model_save_path='lm_model.h5',
-         tensorboard_log_path='tensorboard_log',
-         num_epochs=50,
-         learning_rate=2e-4,
-         batch_size=64)
+    _argparser = argparse.ArgumentParser(
+        description='A simple example of the Transformer model in work',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    _argparser.add_argument(
+        '--save', type=str, required=True, metavar='PATH',
+        help='A path where the best model should be saved / restored from')
+    _argparser.add_argument(
+        '--tensorboard-log', type=str, metavar='PATH', default=None,
+        help='Path to a directory for Tensorboard logs')
+    _argparser.add_argument(
+        '--epochs', type=int, default=200, metavar='INTEGER',
+        help='The number of epochs to train')
+    _argparser.add_argument(
+        '--lr', type=float, default=2e-4, metavar='FLOAT',
+        help='Learning rate')
+    _argparser.add_argument(
+        '--batch-size', type=int, default=32, metavar='INTEGER',
+        help='Training batch size')
+    _argparser.add_argument(
+        '--seq-len', type=int, default=256, metavar='INTEGER',
+        help='Max sequence length')
+    _argparser.add_argument(
+        '--we-size', type=int, default=512, metavar='INTEGER',
+        help='Word embedding size')
+    _args = _argparser.parse_args()
+
+    main(model_save_path=_args.save,
+         tensorboard_log_path=_args.tensorboard_log,
+         num_epochs=_args.epochs,
+         learning_rate=_args.lr,
+         batch_size=_args.batch_size,
+         max_seq_length=_args.seq_len,
+         word_embedding_size=_args.we_size)

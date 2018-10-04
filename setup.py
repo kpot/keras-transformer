@@ -9,7 +9,8 @@ setup(
     # This allows to use git/hg to auto-generate new versions
     use_scm_version={"root": ".", "relative_to": __file__},
     setup_requires=['setuptools_scm'],
-    description='Library allowing to build (Universal) Transformer models using Keras',
+    description=('Library for building (Universal) Transformer models '
+                 'using Keras'),
     url='https://github.com/kpot/keras-transformer',
     author='Kirill Mavreshko',
     author_email='kimavr@gmail.com',

@@ -66,15 +66,21 @@ from a Python virtual environment, you can do this by running
     pip install -r example/requirements.txt
 
 You will also need to make sure you have a backend for Keras.
-For instance, you can install Tensorflow:
+For instance, you can install Tensorflow (the sample was tested using
+Tensorflow and PlaidML as backends):
 
     pip install tensorflow
 
 Now you can launch the example itself as
 
-    pip -m sample.run
+    pip -m sample.run --save lm_model.h5
 
-If all goes well, you should see the perplexity falling with each epoch.
+to see all command line options and their default values, try
+
+    pip -m sample.run --help
+
+If all goes well, after launching the example you should see
+the perplexity falling with each epoch.
 
     Building vocabulary: 100%|█████████████████████████████████| 36718/36718 [00:04<00:00, 7642.33it/s]
     Learning BPE...Done
@@ -85,8 +91,8 @@ If all goes well, you should see the perplexity falling with each epoch.
         - val_loss: 6.3167 - val_perplexity: 406.5031
     ...
 
-After 50 epochs (~2 hours) of training on GeForce 1080 Ti, I've got
-validation perplexity about 87 and test perplexity 85.26. The score
+After 200 epochs (~5 hours) of training on GeForce 1080 Ti, I've got
+validation perplexity about 51.61 and test perplexity 50.82. The score
 can be further improved, but that is not the point of this demo.
 
 [1]: https://arxiv.org/abs/1706.03762 "Attention Is All You Need"
