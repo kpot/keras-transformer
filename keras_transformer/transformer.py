@@ -267,7 +267,7 @@ class TransformerACT(Layer):
         #    (out of budget for them)
         halting_prob = K.switch(
             step_is_active,
-            lambda: K.switch(
+            K.switch(
                 no_further_steps,
                 self.remainder,
                 halting),
@@ -295,9 +295,12 @@ class TransformerACT(Layer):
         if self.zeros_like_input is None:
             self.zeros_like_input = K.zeros_like(
                 inputs, name='zeros_like_input')
+        # just because K.any(step_is_active) doesn't work in PlaidML
+        any_step_is_active = K.greater(
+            K.sum(K.cast(step_is_active, 'int32')), 0)
         step_weighted_output = K.switch(
-            K.any(step_is_active),
-            lambda: K.expand_dims(halting_prob, -1) * inputs,
+            any_step_is_active,
+            K.expand_dims(halting_prob, -1) * inputs,
             self.zeros_like_input)
         if self.weighted_output is None:
             self.weighted_output = step_weighted_output

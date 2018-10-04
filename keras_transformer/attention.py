@@ -146,13 +146,25 @@ class _BaseMultiHeadAttention(Layer):
         # for further matrix multiplication
         sqrt_d = K.constant(np.sqrt(d_model // self.num_heads),
                             dtype=K.floatx())
-        attention_heads = K.batch_dot(
-            self.apply_dropout_if_needed(
-                K.softmax(
-                    self.mask_attention_if_needed(
-                        K.batch_dot(q, k_transposed) / sqrt_d)),
-                training=training),
-            v)
+        q_shape = K.int_shape(q)
+        k_t_shape = K.int_shape(k_transposed)
+        v_shape = K.int_shape(v)
+        # before performing batch_dot all tensors are being converted to 3D
+        # shape (batch_size * num_heads, rows, cols) to make sure batch_dot
+        # performs identically on all backends
+        attention_heads = K.reshape(
+            K.batch_dot(
+                self.apply_dropout_if_needed(
+                    K.softmax(
+                        self.mask_attention_if_needed(
+                            K.batch_dot(
+                                K.reshape(q, (-1,) + q_shape[-2:]),
+                                K.reshape(k_transposed,
+                                          (-1,) + k_t_shape[-2:]))
+                            / sqrt_d)),
+                    training=training),
+                K.reshape(v, (-1,) + v_shape[-2:])),
+            (-1, self.num_heads, q_shape[-2], v_shape[-1]))
         attention_heads_merged = K.reshape(
             K.permute_dimensions(attention_heads, [0, 2, 1, 3]),
             (-1, d_model))
@@ -179,7 +191,8 @@ class _BaseMultiHeadAttention(Layer):
         We need this to guarantee that decoder's predictions are based
         on what has happened before the position, not after.
         The method does nothing if masking is turned off.
-        :param dot_product: scaled dot-product of Q and K
+        :param dot_product: scaled dot-product of Q and K after reshaping them
+        to 3D tensors (batch * num_heads, rows, cols)
         """
         if not self.use_masking:
             return dot_product
@@ -187,7 +200,7 @@ class _BaseMultiHeadAttention(Layer):
         low_triangle_ones = (
             np.tril(np.ones(last_dims))
             # to ensure proper broadcasting
-            .reshape((1, 1) + last_dims))
+            .reshape((1,) + last_dims))
         inverse_low_triangle = 1 - low_triangle_ones
         close_to_negative_inf = -1e9
         result = (
@@ -247,7 +260,8 @@ class MultiHeadAttention(_BaseMultiHeadAttention):
         # processing
         pre_k, pre_v = [
             K.reshape(
-                K.slice(kv, (0, i * d_model), (-1, d_model)),
+                # K.slice(kv, (0, i * d_model), (-1, d_model)),
+                kv[:, i * d_model: (i + 1) * d_model],
                 (-1, value_seq_len,
                  self.num_heads, d_model // self.num_heads))
             for i in range(2)]
@@ -296,7 +310,8 @@ class MultiHeadSelfAttention(_BaseMultiHeadAttention):
         # processing
         pre_q, pre_k, pre_v = [
             K.reshape(
-                K.slice(qkv, (0, i * d_model), (-1, d_model)),
+                # K.slice(qkv, (0, i * d_model), (-1, d_model)),
+                qkv[:, i * d_model:(i + 1) * d_model],
                 (-1, seq_len, self.num_heads, d_model // self.num_heads))
             for i in range(3)]
         attention_out = self.attention(pre_q, pre_v, pre_k, seq_len, d_model,
