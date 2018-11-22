@@ -73,11 +73,11 @@ Tensorflow and PlaidML as backends):
 
 Now you can launch the example itself as
 
-    pip -m sample.run --save lm_model.h5
+    python -m example.run --save lm_model.h5
 
 to see all command line options and their default values, try
 
-    pip -m sample.run --help
+    python -m example.run --help
 
 If all goes well, after launching the example you should see
 the perplexity falling with each epoch.
