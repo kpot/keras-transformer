@@ -5,7 +5,7 @@ from keras.engine import Layer
 
 
 def positional_signal(hidden_size: int, length: int,
-                      min_timescale: float=1.0, max_timescale: float=1e4):
+                      min_timescale: float = 1.0, max_timescale: float = 1e4):
     """
     Helper function, constructing basic positional encoding.
     The code is partially based on implementation from Tensor2Tensor library
@@ -38,11 +38,18 @@ class AddPositionalEncoding(Layer):
     coordinate encoding described in "Universal Transformers".
     """
 
-    def __init__(self, min_timescale=1.0, max_timescale=1.0e4, **kwargs):
+    def __init__(self, min_timescale: float = 1.0,
+                 max_timescale: float = 1.0e4, **kwargs):
         self.min_timescale = min_timescale
         self.max_timescale = max_timescale
         self.signal = None
         super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config()
+        config['min_timescale'] = self.min_timescale
+        config['max_timescale'] = self.max_timescale
+        return config
 
     def build(self, input_shape):
         _, length, hidden_size = input_shape
@@ -90,6 +97,11 @@ class TransformerCoordinateEmbedding(Layer):
         self.max_depth = max_transformer_depth
         super().__init__(**kwargs)
 
+    def get_config(self):
+        config = super().get_config()
+        config['max_transformer_depth'] = self.max_depth
+        return config
+
     # noinspection PyAttributeOutsideInit
     def build(self, input_shape):
         sequence_length, d_model = input_shape[-2:]
@@ -114,4 +126,3 @@ class TransformerCoordinateEmbedding(Layer):
         if depth is not None:
             result = result + self.depth_embeddings[depth]
         return result
-

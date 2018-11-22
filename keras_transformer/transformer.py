@@ -25,6 +25,11 @@ class LayerNormalization(Layer):
         self.axis = axis
         super().__init__(**kwargs)
 
+    def get_config(self):
+        config = super().get_config()
+        config['axis'] = self.axis
+        return config
+
     # noinspection PyAttributeOutsideInit
     def build(self, input_shape):
         dim = input_shape[-1]
@@ -58,7 +63,7 @@ class TransformerTransition(Layer):
     """
 
     def __init__(self, activation: Union[str, Callable],
-                 size_multiplier: int=4, **kwargs):
+                 size_multiplier: int = 4, **kwargs):
         """
         :param activation: activation function. Must be a string or a callable.
         :param size_multiplier: How big the hidden dimension should be.
@@ -69,6 +74,12 @@ class TransformerTransition(Layer):
         self.activation = activations.get(activation)
         self.size_multiplier = size_multiplier
         super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config()
+        config['activation'] = activations.serialize(self.activation)
+        config['size_multiplier'] = self.size_multiplier
+        return config
 
     # noinspection PyAttributeOutsideInit
     def build(self, input_shape):
@@ -142,10 +153,10 @@ class TransformerBlock:
     more reasonable.
     """
     def __init__(self, name: str, num_heads: int,
-                 residual_dropout: float=0, attention_dropout: float=0,
-                 activation: Optional[Union[str, Callable]]='relu',
-                 compression_window_size: int=None,
-                 use_masking: bool=True):
+                 residual_dropout: float = 0, attention_dropout: float = 0,
+                 activation: Optional[Union[str, Callable]] = 'relu',
+                 compression_window_size: int = None,
+                 use_masking: bool = True):
         self.attention_layer = MultiHeadSelfAttention(
             num_heads, use_masking=use_masking, dropout=attention_dropout,
             compression_window_size=compression_window_size,

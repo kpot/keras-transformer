@@ -11,8 +11,8 @@ class _BaseMultiHeadAttention(Layer):
     takes values and keys from the encoder).
     """
     def __init__(self, num_heads: int, use_masking: bool,
-                 dropout: float=0.0,
-                 compression_window_size: int=None,
+                 dropout: float = 0.0,
+                 compression_window_size: int = None,
                  **kwargs):
         """
         :param num_heads: number of attention heads
@@ -38,6 +38,14 @@ class _BaseMultiHeadAttention(Layer):
                 f"Too small compression window ({compression_window_size})")
         self.compression_window_size = compression_window_size
         super().__init__(**kwargs)
+
+    def get_config(self):
+        config = super().get_config()
+        config['num_heads'] = self.num_heads
+        config['use_masking'] = self.use_masking
+        config['dropout'] = self.dropout
+        config['compression_window_size'] = self.compression_window_size
+        return config
 
     # noinspection PyAttributeOutsideInit
     def build_output_params(self, d_model, k_seq_length):
