@@ -2,6 +2,7 @@
 Tools that are not necessary for the Transformer by itself, but might be
 useful in building models with it.
 """
+import math
 
 from keras import activations, regularizers, backend as K
 from keras.engine import Layer
@@ -83,11 +84,6 @@ class TiedOutputEmbedding(Layer):
                 shape=(emb_output_dim,),
                 initializer='zeros',
                 trainable=True)
-            self.emb_biases = self.add_weight(
-                name='emb_biases',
-                shape=(emb_input_dim,),
-                initializer='zeros',
-                trainable=True)
         return super().build(input_shape)
 
     def call(self, inputs, **kwargs):
@@ -97,18 +93,17 @@ class TiedOutputEmbedding(Layer):
         emb_input_dim, emb_output_dim = K.int_shape(embedding_matrix)
         projected = K.dot(K.reshape(main_input, (-1, last_input_dim)),
                           self.projection)
+        if self.add_biases:
+            projected = K.bias_add(projected, self.biases,
+                                   data_format='channels_last')
         if 0 < self.projection_dropout < 1:
             projected = K.in_train_phase(
                 lambda: K.dropout(projected, self.projection_dropout),
                 projected,
                 training=kwargs.get('training'))
-        if self.add_biases:
-            projected = K.bias_add(projected, self.biases,
-                                   data_format='channels_last')
-        attention = K.dot(projected, K.transpose(embedding_matrix))
-        if self.add_biases:
-            attention = K.bias_add(attention, self.emb_biases,
-                                   data_format='channels_last')
+        # scaled dot-product attention
+        sqrt_d = K.constant(math.sqrt(emb_output_dim), dtype=K.floatx())
+        attention = K.dot(projected, K.transpose(embedding_matrix)) / sqrt_d
         result = K.reshape(
             self.activation(attention),
             (input_shape_tensor[0],
