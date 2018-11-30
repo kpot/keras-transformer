@@ -3,7 +3,7 @@ Contains implementation of the Transformer model described in papers
 "Attention is all you need" (https://arxiv.org/abs/1706.03762) and
 "Universal Transformer" (https://arxiv.org/abs/1807.03819)
 """
-
+import math
 from typing import Union, Callable, Optional
 
 from keras.layers import Layer, Add, activations, Dropout
@@ -13,6 +13,15 @@ from keras import backend as K
 from keras.utils import get_custom_objects
 
 from keras_transformer.attention import MultiHeadSelfAttention
+
+
+def gelu(x):
+    """
+    GELU activation, described in paper "Gaussian Error Linear Units (GELUs)"
+    https://arxiv.org/pdf/1606.08415.pdf
+    """
+    c = math.sqrt(2 / math.pi)
+    return 0.5 * x * (1 + K.tanh(c * (x + 0.044715 * K.pow(x, 3))))
 
 
 class LayerNormalization(Layer):
@@ -155,7 +164,7 @@ class TransformerBlock:
     """
     def __init__(self, name: str, num_heads: int,
                  residual_dropout: float = 0, attention_dropout: float = 0,
-                 activation: Optional[Union[str, Callable]] = 'relu',
+                 activation: Optional[Union[str, Callable]] = 'gelu',
                  compression_window_size: int = None,
                  use_masking: bool = True):
         self.attention_layer = MultiHeadSelfAttention(
@@ -332,4 +341,5 @@ get_custom_objects().update({
     'LayerNormalization': LayerNormalization,
     'TransformerTransition': TransformerTransition,
     'TransformerACT': TransformerACT,
+    'gelu': gelu,
 })
