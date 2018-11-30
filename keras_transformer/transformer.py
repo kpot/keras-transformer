@@ -10,6 +10,7 @@ from keras.layers import Layer, Add, activations, Dropout
 from keras import initializers
 # noinspection PyPep8Naming
 from keras import backend as K
+from keras.utils import get_custom_objects
 
 from keras_transformer.attention import MultiHeadSelfAttention
 
@@ -324,3 +325,11 @@ class TransformerACT(Layer):
 
     def finalize(self):
         self.add_loss(self.ponder_cost)
+
+
+get_custom_objects().update({
+    'MultiHeadSelfAttention': MultiHeadSelfAttention,
+    'LayerNormalization': LayerNormalization,
+    'TransformerTransition': TransformerTransition,
+    'TransformerACT': TransformerACT,
+})

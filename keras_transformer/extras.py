@@ -7,6 +7,7 @@ import math
 from keras import activations, regularizers, backend as K
 from keras.engine import Layer
 from keras.layers import Embedding
+from keras.utils import get_custom_objects
 
 
 class ReusableEmbedding(Embedding):
@@ -50,11 +51,14 @@ class TiedOutputEmbedding(Layer):
     """
     def __init__(self, activation=None,
                  add_biases=False, projection_regularizer=None,
-                 projection_dropout: float = 0.0, **kwargs):
+                 projection_dropout: float = 0.0,
+                 scaled_attention=False,
+                 **kwargs):
         self.activation = activations.get(activation)
         self.add_biases = add_biases
         self.projection_regularizer = regularizers.get(projection_regularizer)
         self.projection_dropout = projection_dropout
+        self.scaled_attention = scaled_attention
         super().__init__(**kwargs)
 
     def get_config(self):
@@ -65,7 +69,8 @@ class TiedOutputEmbedding(Layer):
             add_biases=self.add_biases,
             projection_regularizer=regularizers.serialize(
                 self.projection_regularizer),
-            projection_dropout=self.projection_dropout)
+            projection_dropout=self.projection_dropout,
+            scaled_attention=self.scaled_attention)
 
     # noinspection PyAttributeOutsideInit
     def build(self, input_shape):
@@ -101,9 +106,12 @@ class TiedOutputEmbedding(Layer):
                 lambda: K.dropout(projected, self.projection_dropout),
                 projected,
                 training=kwargs.get('training'))
-        # scaled dot-product attention
-        sqrt_d = K.constant(math.sqrt(emb_output_dim), dtype=K.floatx())
-        attention = K.dot(projected, K.transpose(embedding_matrix)) / sqrt_d
+        attention = K.dot(projected, K.transpose(embedding_matrix))
+        if self.scaled_attention:
+            # scaled dot-product attention, described in
+            # "Attention is all you need" (https://arxiv.org/abs/1706.03762)
+            sqrt_d = K.constant(math.sqrt(emb_output_dim), dtype=K.floatx())
+            attention = attention / sqrt_d
         result = K.reshape(
             self.activation(attention),
             (input_shape_tensor[0],
@@ -115,3 +123,9 @@ class TiedOutputEmbedding(Layer):
         main_input_shape, embedding_matrix_shape = input_shape
         emb_input_dim, emb_output_dim = embedding_matrix_shape
         return main_input_shape[0], main_input_shape[1], emb_input_dim
+
+
+get_custom_objects().update({
+    'ReusableEmbedding': ReusableEmbedding,
+    'TiedOutputEmbedding': TiedOutputEmbedding,
+})

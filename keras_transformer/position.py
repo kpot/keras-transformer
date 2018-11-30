@@ -2,6 +2,7 @@ import numpy as np
 # noinspection PyPep8Naming
 from keras import backend as K
 from keras.engine import Layer
+from keras.utils import get_custom_objects
 
 
 def positional_signal(hidden_size: int, length: int,
@@ -126,3 +127,10 @@ class TransformerCoordinateEmbedding(Layer):
         if depth is not None:
             result = result + self.depth_embeddings[depth]
         return result
+
+
+get_custom_objects().update({
+    'TransformerCoordinateEmbedding': TransformerCoordinateEmbedding,
+    'AddCoordinateEncoding': AddCoordinateEncoding,
+    'AddPositionalEncoding': AddCoordinateEncoding,
+})

@@ -12,16 +12,12 @@ from keras.layers import Dropout, regularizers, Softmax
 # noinspection PyPep8Naming
 from keras import backend as K
 from keras import callbacks
-from keras.utils import custom_object_scope
 from subword_nmt.learn_bpe import learn_bpe
 import numpy as np
 
-from keras_transformer.attention import MultiHeadSelfAttention
 from keras_transformer.extras import TiedOutputEmbedding, ReusableEmbedding
 from keras_transformer.position import TransformerCoordinateEmbedding
-from keras_transformer.transformer import (
-    TransformerBlock, TransformerACT, LayerNormalization,
-    TransformerTransition)
+from keras_transformer.transformer import TransformerBlock, TransformerACT
 
 from .bpe import (
     build_vocabulary, TOKEN_FOR_NUMBERS, BPEEncoder, BPETokenizer, BPEMerges,
@@ -186,6 +182,8 @@ def make_transformer_model(max_seq_length: int, vocabulary_size: int,
                            l2_reg_penalty: float = 1e-6,
                            confidence_penalty_weight: float = 0.05):
     word_ids = Input(shape=(max_seq_length,), dtype='int32', name='word_ids')
+    l2_regularizer = (regularizers.l2(l2_reg_penalty) if l2_reg_penalty
+                      else None)
     embedding_layer = ReusableEmbedding(
         vocabulary_size, word_embedding_size,
         input_length=max_seq_length,
@@ -193,9 +191,9 @@ def make_transformer_model(max_seq_length: int, vocabulary_size: int,
         # Regularization is based on paper "A Comparative Study on
         # Regularization Strategies for Embedding-based Neural Networks"
         # https://arxiv.org/pdf/1508.03721.pdf
-        embeddings_regularizer=regularizers.l2(l2_reg_penalty))
+        embeddings_regularizer=l2_regularizer)
     output_layer = TiedOutputEmbedding(
-        projection_regularizer=regularizers.l2(l2_reg_penalty),
+        projection_regularizer=l2_regularizer,
         projection_dropout=embedding_dropout,
         name='word_prediction_logits')
     coordinate_embedding_layer = TransformerCoordinateEmbedding(
@@ -221,6 +219,7 @@ def make_transformer_model(max_seq_length: int, vocabulary_size: int,
 
     transformer_act_layer.finalize()
     next_step_input = act_output
+    # depth_of_trainable_params(act_output)
     word_predictions = output_softmax_layer(
         output_layer([next_step_input, embedding_matrix]))
     model = Model(inputs=[word_ids], outputs=[word_predictions])
@@ -246,7 +245,8 @@ def main(model_save_path: str,
          learning_rate: float,
          batch_size: int,
          max_seq_length: int,
-         word_embedding_size: int):
+         word_embedding_size: int,
+         load_weights_only: bool):
     encoder = build_wikitext_bpe_encoder()
 
     def x_y_for_dataset(dataset_name):
@@ -257,37 +257,41 @@ def main(model_save_path: str,
         return _x, _y
 
     x, y = x_y_for_dataset(WIKITEXT_TRAINING_SET_NAME)
-    if os.path.exists(model_save_path):
-        print('Loading weights from', model_save_path)
-        # model.load_weights(model_save_path)
-        with custom_object_scope({
-            'TransformerCoordinateEmbedding': TransformerCoordinateEmbedding,
-            'TiedOutputEmbedding': TiedOutputEmbedding,
-            'MultiHeadSelfAttention': MultiHeadSelfAttention,
-            'LayerNormalization': LayerNormalization,
-            'TransformerTransition': TransformerTransition,
-            'TransformerACT': TransformerACT,
-            'ReusableEmbedding': ReusableEmbedding,
-            'perplexity': perplexity,
-        }):
-            model = load_model(model_save_path)
-    else:
-        model = make_transformer_model(
+
+    def compile_new_model():
+        optimizer = optimizers.Adam(
+            lr=learning_rate, beta_1=0.9, beta_2=0.999)
+        _model = make_transformer_model(
             max_seq_length=max_seq_length,
             vocabulary_size=encoder.vocabulary_size(),
             word_embedding_size=word_embedding_size,
             transformer_depth=5,
             num_heads=8)
-        optimizer = optimizers.Adam(lr=learning_rate, clipvalue=5)
-        model.compile(
+        _model.compile(
             optimizer,
             loss=losses.sparse_categorical_crossentropy,
             metrics=[perplexity])
+        return _model
+
+    if os.path.exists(model_save_path):
+        if load_weights_only:
+            print('Loading weights from', model_save_path)
+            model = compile_new_model()
+            model.load_weights(model_save_path)
+        else:
+            print('Loading the whole model from', model_save_path)
+            model = load_model(
+                model_save_path,
+                custom_objects={
+                    'perplexity': perplexity,
+                })
+    else:
+        model = compile_new_model()
 
     model_callbacks = [
         callbacks.ModelCheckpoint(
             model_save_path,
-            monitor='val_perplexity', save_best_only=True, verbose=True)
+            monitor='val_perplexity', save_best_only=True, verbose=True),
     ]
     if tensorboard_log_path:
         model_callbacks.append(callbacks.TensorBoard(tensorboard_log_path))
@@ -328,6 +332,10 @@ if __name__ == '__main__':
     _argparser.add_argument(
         '--we-size', type=int, default=512, metavar='INTEGER',
         help='Word embedding size')
+    _argparser.add_argument(
+        '--load-weights-only', action='store_true',
+        help='Use the save file only to initialize weights '
+             '(do not load the whole model)')
     _args = _argparser.parse_args()
 
     main(model_save_path=_args.save,
@@ -336,4 +344,5 @@ if __name__ == '__main__':
          learning_rate=_args.lr,
          batch_size=_args.batch_size,
          max_seq_length=_args.seq_len,
-         word_embedding_size=_args.we_size)
+         word_embedding_size=_args.we_size,
+         load_weights_only=_args.load_weights_only)
