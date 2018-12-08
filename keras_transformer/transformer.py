@@ -159,14 +159,19 @@ class TransformerBlock:
         "We apply dropout [33] to the output of each sub-layer,
          before it is added to the sub-layer input and normalized"
 
+    while the Universal Transformer paper puts dropout one step *after*
+    the sub-layers's output was added to its input (Figure 4 in the paper).
+
     In this code the order from the Universal Transformer is used, as arguably
-    more reasonable.
+    more reasonable. You can use classical Transformer's (2017) way of
+    connecting the pieces by passing vanilla_wiring=True to the constructor.
     """
     def __init__(self, name: str, num_heads: int,
                  residual_dropout: float = 0, attention_dropout: float = 0,
                  activation: Optional[Union[str, Callable]] = 'gelu',
                  compression_window_size: int = None,
-                 use_masking: bool = True):
+                 use_masking: bool = True,
+                 vanilla_wiring=False):
         self.attention_layer = MultiHeadSelfAttention(
             num_heads, use_masking=use_masking, dropout=attention_dropout,
             compression_window_size=compression_window_size,
@@ -180,16 +185,22 @@ class TransformerBlock:
         self.transition_layer = TransformerTransition(
             name=f'{name}_transition', activation=activation)
         self.addition_layer = Add(name=f'{name}_add')
+        self.vanilla_wiring = vanilla_wiring
 
     def __call__(self, _input):
         output = self.attention_layer(_input)
-        norm1_output = self.norm1_layer(
-            self.dropout_layer(
-                self.addition_layer([_input, output])))
+        post_residual1 = (
+            self.addition_layer([_input, self.dropout_layer(output)])
+            if self.vanilla_wiring
+            else self.dropout_layer(self.addition_layer([_input, output])))
+        norm1_output = self.norm1_layer(post_residual1)
         output = self.transition_layer(norm1_output)
-        output = self.norm2_layer(
-            self.dropout_layer(
+        post_residual2 = (
+            self.addition_layer([norm1_output, self.dropout_layer(output)])
+            if self.vanilla_wiring
+            else self.dropout_layer(
                 self.addition_layer([norm1_output, output])))
+        output = self.norm2_layer(post_residual2)
         return output
 
 
