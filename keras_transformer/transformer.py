@@ -233,7 +233,7 @@ class TransformerACT(Layer):
         :param kwargs: Any standard parameters for a layer in Keras (like name)
         """
         self.halt_epsilon = halt_epsilon
-        self.time_penalty = K.constant(time_penalty, dtype=K.floatx())
+        self.time_penalty = time_penalty
         self.ponder_cost = None
         self.weighted_output = None
         self.zeros_like_input = None
@@ -243,6 +243,12 @@ class TransformerACT(Layer):
         self.remainder = None
         self.active_steps = None
         super().__init__(**kwargs)
+
+    def get_config(self):
+        return dict(
+            super().get_config(),
+            halt_epsilon=self.halt_epsilon,
+            time_penalty=self.time_penalty)
 
     # noinspection PyAttributeOutsideInit
     def build(self, input_shape):
@@ -258,6 +264,7 @@ class TransformerACT(Layer):
             shape=(1,),
             initializer=initializers.Constant(0.1),
             trainable=True)
+        self.time_penalty_t = K.constant(self.time_penalty, dtype=K.floatx())
         return super().build(input_shape)
 
     def initialize_control_tensors(self, halting):
@@ -311,7 +318,7 @@ class TransformerACT(Layer):
         # We don't know which step is the last, so we keep updating
         # expression for the loss with each call of the layer
         self.ponder_cost = (
-            self.time_penalty * K.mean(self.remainder + self.active_steps))
+            self.time_penalty_t * K.mean(self.remainder + self.active_steps))
         # Updating "the remaining probability" and the halt budget
         self.remainder = K.switch(
             no_further_steps,
