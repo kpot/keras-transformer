@@ -48,7 +48,7 @@ class _BaseMultiHeadAttention(Layer):
         return config
 
     # noinspection PyAttributeOutsideInit
-    def build_output_params(self, d_model, k_seq_length):
+    def build_output_params(self, d_model):
         self.output_weights = self.add_weight(
             name='output_weights',
             shape=(d_model, d_model),
@@ -231,7 +231,6 @@ class MultiHeadAttention(_BaseMultiHeadAttention):
                 'You must call this layer passing a list of two tensors'
                 '(for keys/values and queries)')
         values_dim, query_dim = input_shape[0][-1], input_shape[1][-1]
-        values_seq_length = input_shape[0][-2]
         if query_dim != values_dim:
             raise ValueError(
                 f'Both keys/value and query inputs must be '
@@ -250,7 +249,7 @@ class MultiHeadAttention(_BaseMultiHeadAttention):
         self.q_weights = self.add_weight(
             name='q_weights', shape=(d_model, d_model),
             initializer='glorot_uniform', trainable=True)
-        self.build_output_params(d_model, values_seq_length)
+        self.build_output_params(d_model)
         return super().build(input_shape)
 
     def call(self, inputs, **kwargs):
@@ -291,7 +290,7 @@ class MultiHeadSelfAttention(_BaseMultiHeadAttention):
     def build(self, input_shape):
         if not isinstance(input_shape, tuple):
             raise ValueError('Invalid input')
-        seq_length, d_model = input_shape[-2:]
+        d_model = input_shape[-1]
         self.validate_model_dimensionality(d_model)
         # These weights are concatenated matrices W_q, W_k and W_v which
         # are, in turn, concatenated W matrices of keys, queries and values
@@ -303,7 +302,7 @@ class MultiHeadSelfAttention(_BaseMultiHeadAttention):
             shape=(d_model, d_model * 3),  # * 3 for q, k and v
             initializer='glorot_uniform',
             trainable=True)
-        self.build_output_params(d_model, seq_length)
+        self.build_output_params(d_model)
         return super().build(input_shape)
 
     def call(self, inputs, **kwargs):
