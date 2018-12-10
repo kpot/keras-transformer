@@ -89,7 +89,7 @@ FRACTION_SEPARATOR = re.compile(rf'[\s{SLASHES}]+')
 NUMBER_RE = r'(?:' + '|'.join(v for k, v in NUMBER_RE_PIECES) + ')'
 NUMBER_RE_GROUPED = re.compile(
     '(?:' + '|'.join(rf'(?P<{k}>{v})' for k, v in NUMBER_RE_PIECES) + ')')
-PUNCTUATION_RE = re.escape('\.,:;{}()[]\?!\'"\n\t/#*|↑~+')
+PUNCTUATION_RE = re.escape('\\.,:;{}()[]\\?!\'"\n\t/#*|↑~+')
 DELIMITERS_RE = rf"(?:\.\.\.|[{PUNCTUATION_RE}])"
 
 
@@ -141,7 +141,7 @@ class RegexTokenizer:
     tokens_as_delims = re.compile(make_tokens_re(word_re, False))
 
     def apply(self, text: str,
-              check_completeness: bool=False) -> Iterable[Token]:
+              check_completeness: bool = False) -> Iterable[Token]:
         for match in re.finditer(self.all_tokens, text):
             num, word, delimiter = match.groups()
             if num:

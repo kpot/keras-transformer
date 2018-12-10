@@ -1,7 +1,7 @@
 import collections
 from typing import (
     Iterable, Tuple, List, NamedTuple, Dict, Sequence, FrozenSet, TextIO,
-    Callable)
+    Callable, Optional)
 
 
 BPE_WORD_TAIL = '</w>'
@@ -112,14 +112,14 @@ class BPETokenizer:
 
     def __init__(self, merges: BPEMerges,
                  word_tokenizer: Callable[[str], Iterable[str]],
-                 mark_sequence_edges: bool=True):
+                 mark_sequence_edges: bool = True):
         self.word_tokenizer = word_tokenizer
         self.merges = merges
         self.bpe_cache = {}
         self.mark_sequence_edges = mark_sequence_edges
 
     def apply(self, text: str,
-              low_case: bool=True) -> Iterable[str]:
+              low_case: bool = True) -> Iterable[str]:
         if self.mark_sequence_edges:
             yield TOKEN_FOR_BEGINNING_OF_SEQUENCE
         for token in self.word_tokenizer(text):
@@ -135,13 +135,20 @@ class BPETokenizer:
 
 
 class BPEVocabulary:
-    def __init__(self, bpe_vocabulary_file: TextIO):
+    def __init__(self, bpe_vocabulary_file: TextIO,
+                 special_tokens: Optional[Sequence[str]] = None):
         vocabulary = {
             TOKEN_FOR_UNKNOWN: ID_FOR_UNKNOWN_TOKEN,
             TOKEN_FOR_BEGINNING_OF_SEQUENCE: ID_FOR_BEGINNING_OF_SEQUENCE,
             TOKEN_FOR_END_OF_SEQUENCE: ID_FOR_END_OF_SEQUENCE,
             TOKEN_FOR_PADDING: ID_FOR_PADDING}
         i = max(vocabulary.values()) + 1
+        if special_tokens is not None:
+            for extra_token in special_tokens:
+                if extra_token not in vocabulary:
+                    vocabulary[extra_token] = i
+                    i += 1
+        self.first_normal_token_id = i
         assert i == len(vocabulary)
         for line in bpe_vocabulary_file:
             if line:
@@ -151,15 +158,18 @@ class BPEVocabulary:
                     i += 1
         self.token_to_id = vocabulary
         self.id_to_token = {v: k for k, v in vocabulary.items()}
+        self.last_normal_token_id = i - 1
 
 
 class BPEEncoder:
     """
     Converts a text into a stream of WordIDs and BPE tokens
     """
-    def __init__(self, bpe_tokenizer: BPETokenizer, bpe_vocabulary: TextIO):
+    def __init__(self, bpe_tokenizer: BPETokenizer, bpe_vocabulary: TextIO,
+                 special_tokens: Optional[Sequence[str]] = None):
         self.bpe_tokenizer = bpe_tokenizer
-        self.vocabulary = BPEVocabulary(bpe_vocabulary)
+        self.vocabulary = BPEVocabulary(
+            bpe_vocabulary, special_tokens=special_tokens)
 
     def __call__(self, text: str) -> Iterable[Tuple[int, str]]:
         token_to_id = self.vocabulary.token_to_id
@@ -176,4 +186,3 @@ def build_vocabulary(tokens: Iterable[str]) -> List[Tuple[str, int]]:
     for token in tokens:
         vocabulary[token.lower()] += 1
     return sorted(vocabulary.items(), key=lambda i: (i[1], i[0]), reverse=True)
-
