@@ -2,6 +2,7 @@ import numpy as np
 # noinspection PyPep8Naming
 from keras import backend as K
 from keras.engine import Layer
+from keras.utils import get_custom_objects
 
 
 class _BaseMultiHeadAttention(Layer):
@@ -327,3 +328,9 @@ class MultiHeadSelfAttention(_BaseMultiHeadAttention):
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
+
+get_custom_objects().update({
+    'MultiHeadSelfAttention': MultiHeadSelfAttention,
+    'MultiHeadAttention': MultiHeadAttention,
+})

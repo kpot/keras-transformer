@@ -355,7 +355,6 @@ class TransformerACT(Layer):
 
 
 get_custom_objects().update({
-    'MultiHeadSelfAttention': MultiHeadSelfAttention,
     'LayerNormalization': LayerNormalization,
     'TransformerTransition': TransformerTransition,
     'TransformerACT': TransformerACT,
