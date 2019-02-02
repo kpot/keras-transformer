@@ -28,10 +28,11 @@ transformer_block = TransformerBlock(
 add_coordinate_embedding = TransformerCoordinateEmbedding(
     transformer_depth,
     name='coordinate_embedding')
-
+    
+output = transformer_input # shape: (<batch size>, <sequence length>, <input size>)
 for step in range(transformer_depth):
     output = transformer_block(
-        add_coordinate_embedding(input, step=step))
+        add_coordinate_embedding(output, step=step))
 ```
 
 
