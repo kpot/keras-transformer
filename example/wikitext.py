@@ -7,9 +7,9 @@ import re
 from subword_nmt.learn_bpe import learn_bpe
 import tqdm
 
-from .bpe import (
+from bpe import (
     BPEEncoder, TOKEN_FOR_NUMBERS, build_vocabulary, BPETokenizer, BPEMerges)
-from .tokenizer import RegexTokenizer
+from tokenizer import RegexTokenizer
 
 
 NUM_BPE_MERGES = 10000

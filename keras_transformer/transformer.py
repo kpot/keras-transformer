@@ -6,13 +6,14 @@ Contains implementation of the Transformer model described in papers
 import math
 from typing import Union, Callable, Optional
 
-from keras.layers import Layer, Add, activations, Dropout
+from keras.layers import Layer, Add, Dropout
+import keras.activations as activations
 from keras import initializers
 # noinspection PyPep8Naming
 from keras import backend as K
 from keras.utils import get_custom_objects
 
-from keras_transformer.attention import MultiHeadSelfAttention
+from keras_transformer.attention import MultiHeadSelfAttention, MultiHeadAttention
 
 
 def gelu(x):
@@ -170,12 +171,20 @@ class TransformerBlock:
                  residual_dropout: float = 0, attention_dropout: float = 0,
                  activation: Optional[Union[str, Callable]] = 'gelu',
                  compression_window_size: int = None,
-                 use_masking: bool = True,
+                 use_masking: bool = True, use_self_attention: bool = True,
                  vanilla_wiring=False):
-        self.attention_layer = MultiHeadSelfAttention(
-            num_heads, use_masking=use_masking, dropout=attention_dropout,
-            compression_window_size=compression_window_size,
-            name=f'{name}_self_attention')
+        self.use_self_attention = use_self_attention
+        if use_self_attention:
+            self.attention_layer = MultiHeadSelfAttention(
+                num_heads, use_masking=use_masking, dropout=attention_dropout,
+                compression_window_size=compression_window_size,
+                name=f'{name}_self_attention')
+        else:
+            self.attention_layer = MultiHeadAttention(
+                num_heads, use_masking=use_masking, dropout=attention_dropout,
+                compression_window_size=compression_window_size,
+                name=f'{name}_attention')
+            
         self.norm1_layer = LayerNormalization(name=f'{name}_normalization1')
         self.dropout_layer = (
             Dropout(residual_dropout, name=f'{name}_dropout')
@@ -188,7 +197,10 @@ class TransformerBlock:
         self.vanilla_wiring = vanilla_wiring
 
     def __call__(self, _input):
-        output = self.attention_layer(_input)
+        att_input = _input
+        if not self.use_self_attention:
+            _input = _input[1]
+        output = self.attention_layer(att_input)
         post_residual1 = (
             self.addition_layer([_input, self.dropout_layer(output)])
             if self.vanilla_wiring

@@ -1,13 +1,13 @@
 from keras import regularizers
 from keras.models import Model
-# noinspection PyPep8Naming
 from keras import backend as K
-from keras.layers import Input, Softmax, Embedding, Add, Lambda, Dense
+from keras.layers import Input, Softmax, Embedding, Add, Lambda, Dense, TimeDistributed
+from keras.losses import sparse_categorical_crossentropy
 
 from keras_transformer.extras import ReusableEmbedding, TiedOutputEmbedding
 from keras_transformer.position import TransformerCoordinateEmbedding
 from keras_transformer.transformer import TransformerACT, TransformerBlock
-
+from keras_transformer.position import AddPositionalEncoding
 
 def universal_transformer_gpt_model(
         max_seq_length: int, vocabulary_size: int,
@@ -231,3 +231,50 @@ def transformer_bert_model(
         inputs=[word_ids, segment_ids],
         outputs=[word_predictions, class_prediction])
     return model
+
+def transformer_nmt_model(
+        vocab_in_size: int,
+        vocab_out_size: int,
+        len_sequence: int,
+        heads: int = 8,
+        dropout: float = .1,
+        embedding_dim: int = 256,
+        encoder_depth: int = 2,
+        decoder_depth: int = 2):
+    """
+    Builds a neural-machine translator model that utilizes a set of transformers. This model
+    follows the general architecture of the original transformer model from 
+    "Attention is All You Need" (https://arxiv.org/abs/1706.03762)
+    """
+    # Encoder definition.
+    enc_inputs = Input(shape=(len_sequence,), name="enc_inputs")
+    enc_emb = Embedding(input_dim=vocab_in_size, output_dim=embedding_dim, name="enc_embedding")
+    enc_coord_emb = AddPositionalEncoding(max_timescale=max(len_sequence, len_sequence))
+    # Flow the encoder tensors
+    next_step = enc_coord_emb(enc_emb(enc_inputs))
+    enc_block = []
+    for i in range(encoder_depth):
+        enc_block.append(TransformerBlock(num_heads=heads, residual_dropout=dropout, attention_dropout=dropout, 
+                                      use_masking=False, vanilla_wiring=False, name=("enc_block" + str(i))))
+        next_step = enc_block[i](next_step)
+    enc_out = next_step
+
+    # Decoder definition.
+    dec_inputs = Input(shape=(len_sequence,), name="dec_inputs")
+    dec_emb = Embedding(input_dim=vocab_out_size, output_dim=embedding_dim, name="dec_embedding")
+    dec_coord_emb = AddPositionalEncoding(max_timescale=max(len_sequence, len_sequence))
+    dec_to_onehot = Dense(units=vocab_out_size, name="dec_to_onehot", activation="softmax")
+    # Flow the decoder tensors.
+    next_step = dec_coord_emb(dec_emb(dec_inputs))
+    dec_block = []
+    for i in range(decoder_depth):
+        dec_block.append(TransformerBlock(num_heads=heads, residual_dropout=dropout, attention_dropout=dropout, 
+                                  use_self_attention=False, use_masking=True, vanilla_wiring=False,
+                                  name="dec_block" + str(i)))
+        next_step = dec_block[i]([enc_out, next_step])
+    output = TimeDistributed(dec_to_onehot, name="encDistribution")(next_step)
+
+    attmodel = Model([enc_inputs, dec_inputs], output)
+    attmodel.compile(optimizer='adam', 
+                     loss=sparse_categorical_crossentropy, metrics=['sparse_categorical_accuracy'])
+    return attmodel
