@@ -279,6 +279,13 @@ class MultiHeadAttention(_BaseMultiHeadAttention):
         return self.attention(pre_q, pre_v, pre_k, query_seq_len, d_model,
                               training=kwargs.get('training'))
 
+    def compute_output_shape(self, input_shape):
+        if not (isinstance(input_shape, list) and len(input_shape) == 2):
+            raise ValueError(
+                'You must call this layer passing a list of two tensors'
+                '(for keys/values and queries)')
+        return input_shape[1]
+
 
 class MultiHeadSelfAttention(_BaseMultiHeadAttention):
     """
