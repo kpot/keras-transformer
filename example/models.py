@@ -64,9 +64,10 @@ def universal_transformer_gpt_model(
     # Penalty for confidence of the output distribution, as described in
     # "Regularizing Neural Networks by Penalizing Confident
     # Output Distributions" (https://arxiv.org/abs/1701.06548)
+    eps = K.epsilon()
     confidence_penalty = K.mean(
         confidence_penalty_weight *
-        K.sum(word_predictions * K.log(word_predictions), axis=-1))
+        K.sum(word_predictions * K.log(word_predictions+eps), axis=-1))
     model.add_loss(confidence_penalty)
     return model
 
