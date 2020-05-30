@@ -6,7 +6,8 @@ Contains implementation of the Transformer model described in papers
 import math
 from typing import Union, Callable, Optional
 
-from keras.layers import Layer, Add, activations, Dropout
+from keras.layers import Layer, Add, Dropout
+from keras import activations
 from keras import initializers
 # noinspection PyPep8Naming
 from keras import backend as K
